@@ -1,0 +1,8 @@
+[package]
+name = "kudzu"
+version = "0.1.0"
+authors = ["Without Boats <boats@mozilla.com>"]
+edition = "2018"
+
+[dependencies]
+rand = "0.6.5"
