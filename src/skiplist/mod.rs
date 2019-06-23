@@ -7,8 +7,8 @@ use std::cmp;
 use std::fmt;
 use std::mem;
 use std::ptr::{self, NonNull};
-use std::sync::atomic::AtomicPtr;
-use std::sync::atomic::Ordering::*;
+use std::sync::atomic::{AtomicPtr, AtomicU8};
+use std::sync::atomic::Ordering::Relaxed;
 
 use crate::AbstractOrd;
 
@@ -21,6 +21,7 @@ type Lanes<T>   = [AtomicPtr<Node<T>>; 1];// NB: Lanes is actually a variable si
                                         // MAX_HEIGHT.
 
 pub struct SkipList<T> {
+    current_height: AtomicU8,
     lanes: [AtomicPtr<Node<T>>; MAX_HEIGHT],
 }
 
@@ -42,18 +43,24 @@ struct InnerNode<T> {
 impl<T: AbstractOrd<T>> SkipList<T> {
     pub fn new() -> SkipList<T> {
         SkipList {
+            current_height: AtomicU8::new(8),
             lanes: Default::default(),
         }
     }
 
     pub fn insert<'a>(&'a self, elem: T) -> Option<T> {
-        insert::insert(&self.lanes[..], elem)
+        insert::insert(&self.lanes[..], elem, &self.current_height)
     }
 }
 
 impl<T> SkipList<T> {
+    fn lanes(&self) -> &[AtomicPtr<Node<T>>] {
+        let init = MAX_HEIGHT - self.current_height.load(Relaxed) as usize;
+        &self.lanes[init..]
+    }
+
     pub fn get<'a, U: AbstractOrd<T> + ?Sized>(&'a self, elem: &U) -> Option<&T> {
-        get::get(&self.lanes[..], elem)
+        get::get(self.lanes(), elem)
     }
 
     pub fn elems(&self) -> Elems<'_, T> {
@@ -84,8 +91,9 @@ impl<T> SkipList<T> {
 }
 
 impl<T> Node<T> {
-    fn alloc(elem: T) -> NonNull<Node<T>> {
+    fn alloc(elem: T, max_height: &AtomicU8) -> NonNull<Node<T>> {
         let height = random_height();
+        max_height.fetch_max(height as u8, Relaxed);
         unsafe {
             let layout = Node::<T>::layout(height);
             let ptr = alloc::alloc_zeroed(layout) as *mut Node<T>;

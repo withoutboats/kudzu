@@ -1,14 +1,15 @@
 use std::cmp::Ordering::*;
 use std::mem::ManuallyDrop;
 use std::ptr::{self, NonNull};
-use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::{AtomicPtr, AtomicU8};
 use std::sync::atomic::Ordering::{Relaxed, AcqRel, Release};
 
 use crate::AbstractOrd;
 use super::{Ptr, Node, MAX_HEIGHT};
 
-pub(super) fn insert<'a, T>(lanes: &'a [AtomicPtr<Node<T>>], elem: T) -> Option<T>
-    where T: AbstractOrd<T>
+pub(super) fn insert<'a, T>(lanes: &'a [AtomicPtr<Node<T>>], elem: T, max_height: &AtomicU8)
+    -> Option<T>
+where T: AbstractOrd<T>
 {
     // This wonky memory set up is necessary to handle retry iteration: we do
     // not know we need to retry the insertion until after we have already
@@ -123,7 +124,7 @@ pub(super) fn insert<'a, T>(lanes: &'a [AtomicPtr<Node<T>>], elem: T) -> Option<
             // location on the stack.
             None        => {
                 let elem = unsafe { ManuallyDrop::take(&mut elem) };
-                let node = Node::alloc(elem);
+                let node = Node::alloc(elem, max_height);
                 elem_ptr = unsafe { NonNull::from(&node.as_ref().inner.elem) };
                 new_node = Some(node);
                 new_node.unwrap()
