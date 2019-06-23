@@ -2,6 +2,9 @@
 name = "kudzu"
 version = "0.1.0"
 authors = ["Without Boats <boats@mozilla.com>"]
+license = "MIT OR Apache-2.0"
+description = "concurrent, grow-only data structures"
+repository = "https://github.com/withoutboats/kudzu"
 edition = "2018"
 
 [dependencies]
