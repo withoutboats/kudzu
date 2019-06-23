@@ -1,10 +1,11 @@
+mod get;
+mod insert;
 mod iter;
 
 use std::alloc;
 use std::cmp;
-use std::cmp::Ordering::*;
 use std::fmt;
-use std::mem::{self, ManuallyDrop};
+use std::mem;
 use std::ptr::{self, NonNull};
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering::*;
@@ -45,123 +46,16 @@ impl<T: AbstractOrd<T>> SkipList<T> {
         }
     }
 
-    pub fn get<'a, U: AbstractOrd<T> + ?Sized>(&'a self, elem: &U) -> Option<&T> {
-        let mut lanes: &[AtomicPtr<Node<T>>]    = &self.lanes[..];
-        let mut height: usize                   = MAX_HEIGHT;
-
-        'across: while height > 0 {
-            'down: for atomic_ptr in lanes {
-                let ptr: Ptr<Node<T>> = NonNull::new(atomic_ptr.load(Relaxed));
-
-                match ptr {
-                    None        => {
-                        height -= 1;
-                        continue 'down;
-                    }
-                    Some(ptr)  => {
-                        let node: &'a Node<T> = unsafe { &*ptr.as_ptr() };
-
-                        match elem.cmp(&node.inner.elem) {
-                            Equal   => return Some(&node.inner.elem),
-                            Less    => {
-                                height -= 1;
-                                continue 'down;
-                            }
-                            Greater => {
-                                lanes = &node.lanes()[(node.inner.height as usize - height)..];
-                                continue 'across;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return None;
-    }
-
     pub fn insert<'a>(&'a self, elem: T) -> Option<T> {
-        let mut elem: ManuallyDrop<T> = ManuallyDrop::new(elem);
-        let mut elem_ptr: *const T = &*elem as *const T;
-        let mut new_node: Ptr<Node<T>> = None;
-
-        'unlock: loop {
-            let mut spots: [(*const AtomicPtr<Node<T>>, *mut Node<T>); MAX_HEIGHT] =
-                [(ptr::null(), ptr::null_mut()); MAX_HEIGHT];
-            let mut lanes: &'a [AtomicPtr<Node<T>>] = &self.lanes[..];
-            let mut height = MAX_HEIGHT;
-
-            'across: while height > 0 {
-                'down: for atomic_ptr in lanes {
-                    let ptr: Ptr<Node<T>> = NonNull::new(atomic_ptr.load(Relaxed));
-
-                    match ptr {
-                        None        => {
-                            height -= 1;
-                            spots[height] = (atomic_ptr, ptr::null_mut());
-                            continue 'down;
-                        }
-                        Some(ptr)   => unsafe {
-                            let node: &'a Node<T> = &*ptr.as_ptr();
-                            let elem_ref: &T = &*elem_ptr;
-
-                            match elem_ref.cmp(&node.inner.elem) {
-                                Equal   => {
-                                    match &mut new_node {
-                                        Some(new_node)  => return Some(new_node.as_mut().dealloc()),
-                                        None            => return Some(ManuallyDrop::take(&mut elem)),
-                                    }
-                                }
-                                Less    => {
-                                    height -= 1;
-                                    spots[height] = (atomic_ptr, ptr.as_ptr());
-                                    continue 'down;
-                                }
-                                Greater => {
-                                    lanes = &node.lanes()[(node.inner.height as usize - height)..];
-                                    continue 'across;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            let new_node: &Node<T> = unsafe {
-                match &new_node {
-                    Some(node)  => node.as_ref(),
-                    None        => {
-                        let node = Node::alloc(ManuallyDrop::take(&mut elem), random_height());
-                        elem_ptr = &(*node.as_ptr()).inner.elem;
-                        new_node = Some(node);
-                        new_node.as_ref().unwrap().as_ref()
-                    }
-                }
-            };
-
-            let new_node_ptr = new_node as *const Node<T> as *mut Node<T>;
-            let mut inserted = false;
-
-            'insert: for (&(pred, succ), new) in spots.iter().zip(new_node.lanes().iter().rev()) {
-                let pred: &'a AtomicPtr<Node<T>> = unsafe { &*pred };
-
-                new.store(succ, Release);
-
-                if succ == pred.compare_and_swap(succ, new_node_ptr, AcqRel) {
-                    inserted = true;
-                } else if !inserted {
-                    continue 'unlock;
-                } else {
-                    break 'insert;
-                }
-            }
-
-            return None;
-        }
+        insert::insert(&self.lanes[..], elem)
     }
 }
 
 impl<T> SkipList<T> {
+    pub fn get<'a, U: AbstractOrd<T> + ?Sized>(&'a self, elem: &U) -> Option<&T> {
+        get::get(&self.lanes[..], elem)
+    }
+
     pub fn elems(&self) -> Elems<'_, T> {
         Elems { nodes: self.nodes() }
     }
@@ -190,7 +84,8 @@ impl<T> SkipList<T> {
 }
 
 impl<T> Node<T> {
-    fn alloc(elem: T, height: usize) -> NonNull<Node<T>> {
+    fn alloc(elem: T) -> NonNull<Node<T>> {
+        let height = random_height();
         unsafe {
             let layout = Node::<T>::layout(height);
             let ptr = alloc::alloc_zeroed(layout) as *mut Node<T>;
@@ -201,7 +96,7 @@ impl<T> Node<T> {
     }
 
     unsafe fn dealloc(&mut self) -> T {
-        let layout = Node::<T>::layout(self.inner.height as usize);
+        let layout = Node::<T>::layout(self.height());
         let elem = ptr::read(&mut self.inner.elem);
         alloc::dealloc(self as *mut Node<T> as *mut u8, layout);
         elem
@@ -219,8 +114,12 @@ impl<T> Node<T> {
         }
 
         let lanes = &self.lanes as *const Lanes<T>;
-        let height = self.inner.height as usize;
+        let height = self.height();
         unsafe { mem::transmute(LanesPtr { lanes, height }) }
+    }
+
+    fn height(&self) -> usize {
+        self.inner.height as usize
     }
 
     fn layout(height: usize) -> alloc::Layout {
