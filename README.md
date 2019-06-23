@@ -27,7 +27,7 @@ assumptions), all of these things should be true:
 - Lookup is **wait-free**: looking up an item in the set never waits on another
   thread to complete.
 - At no point is the skiplist in a state inconsistent with the properties of a
-  skiplist (that is, every lane will always be a superset of the lane below
+  skiplist (that is, every lane will always be a subset of the lane below
   it).
 
 Lookup accesses are performed by simply searching through the skiplist using
