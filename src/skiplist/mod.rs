@@ -194,8 +194,14 @@ fn test_concurrent() {
     for offset in 0..THREADS {
         let list = list.clone();
         handles.push(std::thread::spawn(move || {
-            for x in (0..ELEMS).filter(|x| x % THREADS == offset) {
-                list.insert(x);
+            if offset % 2 == 0 {
+                for x in (0..ELEMS).filter(|x| x % THREADS == offset) {
+                    list.insert(x);
+                }
+            } else {
+                for x in (0..ELEMS).filter(|x| x % THREADS == offset).rev() {
+                    list.insert(x);
+                }
             }
         }));
     }
