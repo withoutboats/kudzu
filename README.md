@@ -65,3 +65,5 @@ We also store lanes in reverse order, with the highest lane as the first
 element. Between this and making the nodes inline, we should have much better
 memory locality, because nodes are most often visited in their highest lane,
 not their lowest.
+
+[paper]: https://www.cs.tau.ac.il/~shanir/nir-pubs-web/Papers/OPODIS2006-BA.pdf
