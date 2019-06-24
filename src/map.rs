@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::cmp::Ordering;
+use std::iter::FromIterator;
 
 use crate::{SkipList, AbstractOrd, QWrapper};
 
@@ -48,5 +49,27 @@ where
 {
     fn cmp(&self, rhs: &KeyValue<K, V>) -> Ordering {
         Ord::cmp(&self.0, rhs.0.borrow())
+    }
+}
+
+impl<K: Ord, V> Extend<(K, V)> for Map<K, V> {
+    fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
+        let iter = iter.into_iter().map(|(key, value)| KeyValue(key, value));
+        self.inner.extend(iter);
+    }
+}
+
+impl<'a, K: Ord + Copy, V: Copy> Extend<(&'a K, &'a V)> for Map<K, V> {
+    fn extend<I: IntoIterator<Item = (&'a K, &'a V)>>(&mut self, iter: I) {
+        let iter = iter.into_iter().map(|(&key, &value)| KeyValue(key, value));
+        self.inner.extend(iter);
+    }
+}
+
+impl<K: Ord, V> FromIterator<(K, V)> for Map<K, V> {
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
+        let mut map = Self::new();
+        map.extend(iter);
+        map
     }
 }

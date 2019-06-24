@@ -164,6 +164,14 @@ impl<T> Drop for SkipList<T> {
     }
 }
 
+impl<T: AbstractOrd<T>> Extend<T> for SkipList<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        iter.into_iter().for_each(|elem| {
+            self.insert(elem);
+        });
+    }
+}
+
 fn random_height() -> usize {
     const MASK: u32 = 1 << (MAX_HEIGHT - 1);
     1 + (rand::random::<u32>() | MASK).trailing_zeros() as usize
