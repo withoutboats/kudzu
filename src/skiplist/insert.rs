@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering::{Relaxed, AcqRel, Release};
 use crate::AbstractOrd;
 use super::{Ptr, Node, MAX_HEIGHT};
 
-pub(super) fn insert<'a, T>(lanes: &'a [AtomicPtr<Node<T>>], elem: T, max_height: &AtomicU8)
+pub(super) fn insert<'a, T>(mut init_lanes: &'a [AtomicPtr<Node<T>>], elem: T, max_height: &AtomicU8)
     -> Option<T>
 where T: AbstractOrd<T>
 {
@@ -38,8 +38,10 @@ where T: AbstractOrd<T>
     // retry attempts.
     let mut inserted = 0;
 
+    let mut highest_insert = init_lanes.len();
+
     'retry: loop {
-        let mut lanes = lanes;
+        let mut lanes = init_lanes;
         let mut height = lanes.len();
 
         // The immediate predecessor and successor of this element in each
@@ -65,6 +67,9 @@ where T: AbstractOrd<T>
                     // If the pointer is null, we are at the end of this lane
                     // and we should move downward.
                     None        => {
+                        if height == highest_insert {
+                            init_lanes = lanes;
+                        }
                         height -= 1;
                         spots[height] = (atomic_ptr, ptr::null_mut());
                         continue 'down;
@@ -98,6 +103,9 @@ where T: AbstractOrd<T>
                             // element in this node, we want to move down the
                             // lanes.
                             Less                    => {
+                                if height == highest_insert {
+                                    init_lanes = lanes;
+                                }
                                 height -= 1;
                                 spots[height] = (atomic_ptr, ptr.as_ptr());
                                 continue 'down;
@@ -128,9 +136,12 @@ where T: AbstractOrd<T>
             // location on the stack.
             None        => {
                 let elem = unsafe { ManuallyDrop::take(&mut elem) };
-                let node = Node::alloc(elem, max_height);
+                let height = super::random_height();
+                max_height.fetch_max(height as u8, Relaxed);
+                let node = Node::alloc(elem, height);
                 elem_ptr = unsafe { NonNull::from(&node.as_ref().inner.elem) };
                 new_node = Some(node);
+                highest_insert = height;
                 new_node.unwrap()
             }
         };
