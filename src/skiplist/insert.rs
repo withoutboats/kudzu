@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering::{Relaxed, AcqRel, Release};
 use crate::AbstractOrd;
 use super::{Ptr, Node, MAX_HEIGHT};
 
-pub(super) fn insert<'a, T>(lanes: &'a [AtomicPtr<Node<T>>], elem: T, max_height: &AtomicU8)
+pub(super) fn insert<'a, T>(mut init_lanes: &'a [AtomicPtr<Node<T>>], elem: T, max_height: &AtomicU8)
     -> Option<T>
 where T: AbstractOrd<T>
 {
@@ -34,13 +34,14 @@ where T: AbstractOrd<T>
     let mut elem_ptr: NonNull<T> = NonNull::from(&*elem);
     let mut new_node: Ptr<Node<T>> = None;
 
-    // The 'retry loop handles retrying an insert when it fails completely
-    // (that is, when there  is contention inserting this node into the lowest
-    // lane which contains all nodes). During the insert loop, there is a
-    // single `continue 'retry;`; except for that, the 'retry loop should be
-    // exited on the first iteration.
+    // This tracks how many lanes we have inserted the node into, during
+    // retry attempts.
+    let mut inserted = 0;
+
+    let mut highest_insert = init_lanes.len();
+
     'retry: loop {
-        let mut lanes = lanes;
+        let mut lanes = init_lanes;
         let mut height = lanes.len();
 
         // The immediate predecessor and successor of this element in each
@@ -58,7 +59,7 @@ where T: AbstractOrd<T>
         // We iterate across the list, visting different nodes, and down each
         // node's list of lanes, until we find the point in the lowest lane at
         // which we are to insert our new node.
-        'across: while height > 0 {
+        'across: while height > inserted {
             'down: for atomic_ptr in lanes {
                 let ptr: Ptr<Node<T>> = NonNull::new(atomic_ptr.load(Relaxed));
 
@@ -66,6 +67,9 @@ where T: AbstractOrd<T>
                     // If the pointer is null, we are at the end of this lane
                     // and we should move downward.
                     None        => {
+                        if height == highest_insert {
+                            init_lanes = lanes;
+                        }
                         height -= 1;
                         spots[height] = (atomic_ptr, ptr::null_mut());
                         continue 'down;
@@ -78,6 +82,11 @@ where T: AbstractOrd<T>
                         let elem_ref: &T = elem_ptr.as_ref();
 
                         match elem_ref.cmp(&node.inner.elem) {
+                            // If inserted is > 0, that means we have actually
+                            // found our own partially inserted node. We can
+                            // stop searching.
+                            Equal if inserted > 0   => break 'across,
+
                             // If they are equal, this element has already
                             // been inserted into the list, and we need to
                             // return the element we attempted to insert. The
@@ -85,7 +94,7 @@ where T: AbstractOrd<T>
                             // already allocated a node (in a previous
                             // iteration of the 'retry loop). If we have, we
                             // must deallocate that node to avoid leaking it.
-                            Equal   => match &mut new_node {
+                            Equal                   => match &mut new_node {
                                 Some(new_node)  => return Some(new_node.as_mut().dealloc()),
                                 None            => return Some(ManuallyDrop::take(&mut elem)),
                             }
@@ -93,7 +102,10 @@ where T: AbstractOrd<T>
                             // If the element to be inserted is less than the
                             // element in this node, we want to move down the
                             // lanes.
-                            Less    => {
+                            Less                    => {
+                                if height == highest_insert {
+                                    init_lanes = lanes;
+                                }
                                 height -= 1;
                                 spots[height] = (atomic_ptr, ptr.as_ptr());
                                 continue 'down;
@@ -103,7 +115,7 @@ where T: AbstractOrd<T>
                             // the element in this node, we want to move across
                             // the list, iterating through the lanes in that
                             // node.
-                            Greater => {
+                            Greater                 => {
                                 lanes = &node.lanes()[(node.height() - height)..];
                                 continue 'across;
                             }
@@ -124,9 +136,12 @@ where T: AbstractOrd<T>
             // location on the stack.
             None        => {
                 let elem = unsafe { ManuallyDrop::take(&mut elem) };
-                let node = Node::alloc(elem, max_height);
+                let height = super::random_height();
+                max_height.fetch_max(height as u8, Relaxed);
+                let node = Node::alloc(elem, height);
                 elem_ptr = unsafe { NonNull::from(&node.as_ref().inner.elem) };
                 new_node = Some(node);
+                highest_insert = height;
                 new_node.unwrap()
             }
         };
@@ -134,15 +149,12 @@ where T: AbstractOrd<T>
         // The insert loop iterates upward from the lowest lane of this node
         // to its highest, attempting to insert it at each point, performing
         // an atomic compare and swap to identify conflicts with concurrent
-        // insertions. Because the node *must* be inserted into at least one
-        // lane, if the lowest lane fails we do a complete retry, but if any
-        // higher lanes fail, we simply consider the insertion successful,
-        // leaving the list slighter flatter than it should be.
+        // insertions. In the event of a conflict, we attempt the insertion
+        // again, beginning from that level.
         let new_node_addr = new_node.as_ptr();
         let new_node_lanes = unsafe { new_node.as_ref().lanes() };
-        let mut inserted = false;
 
-        'insert: for (new, &(pred, succ)) in new_node_lanes.iter().rev().zip(&spots) {
+        for (new, &(pred, succ)) in new_node_lanes.iter().rev().zip(&spots).skip(inserted) {
             let pred: &'a AtomicPtr<Node<T>> = unsafe { &*pred };
 
             new.store(succ, Release);
@@ -150,15 +162,11 @@ where T: AbstractOrd<T>
             match succ == pred.compare_and_swap(succ, new_node_addr, AcqRel) {
                 // We successfully inserted the node into at least one lane,
                 // we note that for future iterations.
-                true                => inserted = true,
+                true    => inserted += 1,
 
-                // Because the node has not been inserted yet, we need to retry
-                // the entire insertion on this failure.
-                false if !inserted  => continue 'retry,
-
-                // Because the node has been inserted into at least one lane
-                // of the list, we just finish the insertion here.
-                false               => break 'insert,
+                // We failed to insert the node, so we retry, beginning with
+                // the search.
+                false   => continue 'retry,
             }
         }
 

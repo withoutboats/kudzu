@@ -91,9 +91,7 @@ impl<T> SkipList<T> {
 }
 
 impl<T> Node<T> {
-    fn alloc(elem: T, max_height: &AtomicU8) -> NonNull<Node<T>> {
-        let height = random_height();
-        max_height.fetch_max(height as u8, Relaxed);
+    fn alloc(elem: T, height: usize) -> NonNull<Node<T>> {
         unsafe {
             let layout = Node::<T>::layout(height);
             let ptr = alloc::alloc_zeroed(layout) as *mut Node<T>;
@@ -188,29 +186,44 @@ fn test() {
 #[test]
 fn test_concurrent() {
     const THREADS: i32 = 16;
-    const ELEMS: i32 = 100_000;
+    const ELEMS: i32 = 1_000_000;
     let list = std::sync::Arc::new(SkipList::new());
     let mut handles = vec![];
     for offset in 0..THREADS {
-        let list = list.clone();
+        let list2 = list.clone();
         handles.push(std::thread::spawn(move || {
-            if offset % 2 == 0 {
-                for x in (0..ELEMS).filter(|x| x % THREADS == offset) {
-                    list.insert(x);
-                }
-            } else {
-                for x in (0..ELEMS).filter(|x| x % THREADS == offset).rev() {
-                    list.insert(x);
-                }
+            let modulo = |x: &i32| x % THREADS == offset;
+            let insert = |x| { list2.insert(x); };
+            match offset % 4 {
+                0   => (0..ELEMS).filter(modulo).for_each(insert),
+                1   => (0..ELEMS).rev().filter(modulo).for_each(insert),
+                2   => ((ELEMS / 2)..ELEMS).chain(0..(ELEMS / 2)).filter(modulo).for_each(insert),
+                3   => ((ELEMS / 2)..ELEMS).chain(0..(ELEMS / 2)).rev().filter(modulo).for_each(insert),
+                _   => panic!()
             }
         }));
+
+        // Add conflict
+        if offset % 8 == 1 {
+            let list2 = list.clone();
+            handles.push(std::thread::spawn(move || {
+                let modulo = |x: &i32| x % THREADS == offset;
+                let insert = |x| { list2.insert(x); };
+                (0..ELEMS).filter(modulo).for_each(insert);
+            }));
+        }
     }
 
     for h in handles {
         h.join().unwrap();
     }
 
+    let mut counter = 0;
+
     for (&elem, expected) in list.elems().zip(0..ELEMS) {
         assert_eq!(elem, expected);
+        counter += 1;
     }
+
+    assert_eq!(counter, ELEMS);
 }
