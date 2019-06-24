@@ -5,6 +5,7 @@ mod iter;
 use std::alloc;
 use std::cmp;
 use std::fmt;
+use std::iter::FromIterator;
 use std::mem;
 use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicPtr, AtomicU8};
@@ -169,6 +170,22 @@ impl<T: AbstractOrd<T>> Extend<T> for SkipList<T> {
         iter.into_iter().for_each(|elem| {
             self.insert(elem);
         });
+    }
+}
+
+impl<'a, T: AbstractOrd<T> + Copy> Extend<&'a T> for SkipList<T> {
+    fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
+        iter.into_iter().for_each(|&elem| {
+            self.insert(elem);
+        });
+    }
+}
+
+impl<T: AbstractOrd<T>> FromIterator<T> for SkipList<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut list = Self::new();
+        list.extend(iter);
+        list
     }
 }
 

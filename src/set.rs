@@ -84,7 +84,7 @@ impl<T: Ord> Extend<T> for Set<T> {
 
 impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for Set<T> {
     fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
-        self.inner.extend(iter.into_iter().copied());
+        self.inner.extend(iter);
     }
 }
 
