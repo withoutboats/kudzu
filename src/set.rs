@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::iter::FromIterator;
 
 use crate::{SkipList, QWrapper};
 use crate::skiplist::*;
@@ -73,4 +74,31 @@ impl<'a, T: 'a> Iterator for Iter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
     }
+}
+
+impl<T: Ord> Extend<T> for Set<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.inner.extend(iter);
+    }
+}
+
+impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for Set<T> {
+    fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
+        self.inner.extend(iter);
+    }
+}
+
+impl<T: Ord> FromIterator<T> for Set<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut set = Self::new();
+        set.extend(iter);
+        set
+    }
+}
+
+#[test]
+fn test_collect() {
+    let range = 0..100;
+    let set: Set<_> = range.clone().collect();
+    range.for_each(|i| assert!(set.contains(&i)));
 }
