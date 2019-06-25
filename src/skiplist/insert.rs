@@ -2,7 +2,7 @@ use std::cmp::Ordering::*;
 use std::mem::ManuallyDrop;
 use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicPtr, AtomicU8};
-use std::sync::atomic::Ordering::{Relaxed, AcqRel, Release};
+use std::sync::atomic::Ordering::{Acquire, AcqRel, Release};
 
 use crate::AbstractOrd;
 use super::{Ptr, Node, MAX_HEIGHT};
@@ -60,7 +60,7 @@ where T: AbstractOrd<T>
         // which we are to insert our new node.
         'across: while height > 0 {
             'down: for atomic_ptr in lanes {
-                let ptr: Ptr<Node<T>> = NonNull::new(atomic_ptr.load(Relaxed));
+                let ptr: Ptr<Node<T>> = NonNull::new(atomic_ptr.load(Acquire));
 
                 match ptr {
                     // If the pointer is null, we are at the end of this lane

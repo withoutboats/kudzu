@@ -1,7 +1,7 @@
 use std::cmp::Ordering::*;
 use std::ptr::NonNull;
 use std::sync::atomic::AtomicPtr;
-use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::Ordering::Acquire;
 
 use crate::AbstractOrd;
 use super::{Node, Ptr};
@@ -13,7 +13,7 @@ pub(super) fn get<'a, T, U>(mut lanes: &'a [AtomicPtr<Node<T>>], elem: &U) -> Op
 
     'across: while height > 0 {
         'down: for atomic_ptr in lanes {
-            let ptr: Ptr<Node<T>> = NonNull::new(atomic_ptr.load(Relaxed));
+            let ptr: Ptr<Node<T>> = NonNull::new(atomic_ptr.load(Acquire));
 
             match ptr {
                 None        => {
