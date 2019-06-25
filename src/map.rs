@@ -81,3 +81,47 @@ impl<K: Ord, V> FromIterator<(K, V)> for Map<K, V> {
         map
     }
 }
+
+#[cfg(feature = "rayon")]
+mod parallel {
+    use super::{KeyValue, Map};
+    use rayon::prelude::*;
+
+    impl<K, V> ParallelExtend<(K, V)> for Map<K, V>
+    where
+        K: Ord + Send + Sync,
+        V: Send + Sync,
+    {
+        fn par_extend<I: IntoParallelIterator<Item = (K, V)>>(&mut self, iter: I) {
+            let iter = iter
+                .into_par_iter()
+                .map(|(key, value)| KeyValue(key, value));
+            self.inner.par_extend(iter);
+        }
+    }
+
+    impl<'a, K, V> ParallelExtend<(&'a K, &'a V)> for Map<K, V>
+    where
+        K: Ord + Copy + Send + Sync,
+        V: Copy + Send + Sync,
+    {
+        fn par_extend<I: IntoParallelIterator<Item = (&'a K, &'a V)>>(&mut self, iter: I) {
+            let iter = iter
+                .into_par_iter()
+                .map(|(&key, &value)| KeyValue(key, value));
+            self.inner.par_extend(iter);
+        }
+    }
+
+    impl<K, V> FromParallelIterator<(K, V)> for Map<K, V>
+    where
+        K: Ord + Send + Sync,
+        V: Send + Sync,
+    {
+        fn from_par_iter<I: IntoParallelIterator<Item = (K, V)>>(iter: I) -> Self {
+            let mut map = Self::new();
+            map.par_extend(iter);
+            map
+        }
+    }
+}

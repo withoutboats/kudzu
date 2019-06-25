@@ -189,6 +189,36 @@ impl<T: AbstractOrd<T>> FromIterator<T> for SkipList<T> {
     }
 }
 
+#[cfg(feature = "rayon")]
+mod parallel {
+    use super::{AbstractOrd, SkipList};
+    use rayon::prelude::*;
+
+    impl<T: AbstractOrd<T> + Send + Sync> ParallelExtend<T> for SkipList<T> {
+        fn par_extend<I: IntoParallelIterator<Item = T>>(&mut self, iter: I) {
+            iter.into_par_iter().for_each(|elem| {
+                self.insert(elem);
+            });
+        }
+    }
+
+    impl<'a, T: AbstractOrd<T> + Copy + Send + Sync> ParallelExtend<&'a T> for SkipList<T> {
+        fn par_extend<I: IntoParallelIterator<Item = &'a T>>(&mut self, iter: I) {
+            iter.into_par_iter().for_each(|&elem| {
+                self.insert(elem);
+            });
+        }
+    }
+
+    impl<T: AbstractOrd<T> + Send + Sync> FromParallelIterator<T> for SkipList<T> {
+        fn from_par_iter<I: IntoParallelIterator<Item = T>>(iter: I) -> Self {
+            let mut list = Self::new();
+            list.par_extend(iter);
+            list
+        }
+    }
+}
+
 fn random_height() -> usize {
     const MASK: u32 = 1 << (MAX_HEIGHT - 1);
     1 + (rand::random::<u32>() | MASK).trailing_zeros() as usize

@@ -102,3 +102,38 @@ fn test_collect() {
     let set: Set<_> = range.clone().collect();
     range.for_each(|i| assert!(set.contains(&i)));
 }
+
+#[cfg(feature = "rayon")]
+mod parallel {
+    use super::Set;
+    use rayon::prelude::*;
+
+    impl<T: Ord + Send + Sync> ParallelExtend<T> for Set<T> {
+        fn par_extend<I: IntoParallelIterator<Item = T>>(&mut self, iter: I) {
+            self.inner.par_extend(iter);
+        }
+    }
+
+    impl<'a, T: 'a + Ord + Copy + Send + Sync> ParallelExtend<&'a T> for Set<T> {
+        fn par_extend<I: IntoParallelIterator<Item = &'a T>>(&mut self, iter: I) {
+            self.inner.par_extend(iter);
+        }
+    }
+
+    impl<T: Ord + Send + Sync> FromParallelIterator<T> for Set<T> {
+        fn from_par_iter<I: IntoParallelIterator<Item = T>>(iter: I) -> Self {
+            let mut set = Self::new();
+            set.par_extend(iter);
+            set
+        }
+    }
+
+    #[test]
+    fn test_collect() {
+        let range = 0..100;
+        let set: Set<_> = range.clone().into_par_iter().collect();
+        range
+            .into_par_iter()
+            .for_each(|i| assert!(set.contains(&i)));
+    }
+}
