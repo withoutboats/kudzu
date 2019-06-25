@@ -26,8 +26,8 @@ pub struct SkipList<T> {
     lanes: [AtomicPtr<Node<T>>; MAX_HEIGHT],
 }
 
-unsafe impl<T: Send> Send for SkipList<T> { }
-unsafe impl<T: Sync> Sync for SkipList<T> { }
+unsafe impl<T: Send + Sync> Send for SkipList<T> { }
+unsafe impl<T: Send + Sync> Sync for SkipList<T> { }
 
 #[repr(C)] // NB: repr(C) necessary to avoid reordering lanes field, which must be the tail
 struct Node<T> {
