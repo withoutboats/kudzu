@@ -15,6 +15,12 @@ impl<'a, T> Nodes<'a, T> {
     }
 }
 
+impl<'a, T> Nodes<'a, T> {
+    fn peek(&self) -> Option<&Node<T>> {
+        unsafe { mem::transmute(self.ptr) }
+    }
+}
+
 impl<'a, T> Iterator for Nodes<'a, T> {
     type Item = &'a Node<T>;
     fn next(&mut self) -> Option<&'a Node<T>> {
@@ -56,6 +62,12 @@ impl<'a, T> Iterator for NodesMut<'a, T> {
 
 pub struct Elems<'a, T> {
     pub(super) nodes: Nodes<'a, T>
+}
+
+impl<'a, T> Elems<'a, T> {
+    pub(crate) fn peek(&self) -> Option<&T> {
+        self.nodes.peek().map(|node| &node.inner.elem)
+    }
 }
 
 impl<'a, T> Iterator for Elems<'a, T> {
