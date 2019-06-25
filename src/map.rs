@@ -12,8 +12,8 @@ impl<K: Ord, V> Map<K, V> {
         Map { inner: SkipList::new() }
     }
 
-    pub fn insert(&self, key: K, value: V) -> Option<(K, V)> {
-        self.inner.insert(KeyValue(key, value)).map(|KeyValue(k, v)| (k, v))
+    pub fn insert(&self, key: K, value: V) -> Option<(K, V, &K, &V)> {
+        self.inner.insert(KeyValue(key, value)).map(|(KeyValue(k, v), kv)| (k, v, &kv.0, &kv.1))
     }
 
     pub fn contains<Q>(&self, key: &Q) -> bool
@@ -30,6 +30,14 @@ impl<K: Ord, V> Map<K, V> {
         K: Borrow<Q>,
     {
         self.inner.get(QWrapper::new(key)).map(|KeyValue(_, v)| v)
+    }
+
+    pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
+    where
+        Q: Ord + ?Sized,
+        K: Borrow<Q>,
+    {
+        self.inner.get(QWrapper::new(key)).map(|KeyValue(k, v)| (k, v))
     }
 }
 

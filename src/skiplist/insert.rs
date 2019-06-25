@@ -8,7 +8,7 @@ use crate::AbstractOrd;
 use super::{Ptr, Node, MAX_HEIGHT};
 
 pub(super) fn insert<'a, T>(lanes: &'a [AtomicPtr<Node<T>>], elem: T, max_height: &AtomicU8)
-    -> Option<T>
+    -> Option<(T, &'a T)>
 where T: AbstractOrd<T>
 {
     // This wonky memory set up is necessary to handle retry iteration: we do
@@ -86,8 +86,8 @@ where T: AbstractOrd<T>
                             // iteration of the 'retry loop). If we have, we
                             // must deallocate that node to avoid leaking it.
                             Equal   => match &mut new_node {
-                                Some(new_node)  => return Some(new_node.as_mut().dealloc()),
-                                None            => return Some(ManuallyDrop::take(&mut elem)),
+                                Some(new_node)  => return Some((new_node.as_mut().dealloc(), &node.inner.elem)),
+                                None            => return Some((ManuallyDrop::take(&mut elem), &node.inner.elem)),
                             }
 
                             // If the element to be inserted is less than the

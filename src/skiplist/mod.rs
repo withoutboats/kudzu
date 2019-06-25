@@ -48,7 +48,7 @@ impl<T: AbstractOrd<T>> SkipList<T> {
         }
     }
 
-    pub fn insert<'a>(&'a self, elem: T) -> Option<T> {
+    pub fn insert<'a>(&'a self, elem: T) -> Option<(T, &'a T)> {
         insert::insert(&self.lanes[..], elem, &self.current_height)
     }
 }
