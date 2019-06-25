@@ -30,8 +30,8 @@ assumptions), all of these things should be true:
   skiplist (that is, every lane will always be a subset of the lane below
   it).
 
-Lookup accesses are performed by simply searching through the skiplist using
-Relaxed loads, with no locking or coordination.
+Lookup accesses are performed by simply searching through the skiplist without
+any attempt to acquire locks.
 
 Inserts are performed by finding the location to insert and performing a CAS on
 the pointers in each lane that the node will be inserted to. If the CAS fails

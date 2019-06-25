@@ -9,7 +9,7 @@ use std::iter::FromIterator;
 use std::mem;
 use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicPtr, AtomicU8};
-use std::sync::atomic::Ordering::Relaxed;
+use std::sync::atomic::Ordering::{Relaxed, Acquire};
 
 use crate::AbstractOrd;
 
@@ -87,7 +87,7 @@ impl<T> SkipList<T> {
     }
 
     fn first(&self) -> Ptr<Node<T>> {
-        NonNull::new(self.lanes[MAX_HEIGHT - 1].load(Relaxed))
+        NonNull::new(self.lanes[MAX_HEIGHT - 1].load(Acquire))
     }
 }
 
@@ -112,7 +112,7 @@ impl<T> Node<T> {
     }
 
     fn next(&self) -> Ptr<Node<T>> {
-        NonNull::new(self.lanes().last().unwrap().load(Relaxed))
+        NonNull::new(self.lanes().last().unwrap().load(Acquire))
     }
 
     fn lanes(&self) -> &[AtomicPtr<Node<T>>] {
