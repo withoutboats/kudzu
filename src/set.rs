@@ -13,7 +13,7 @@ impl<T: Ord> Set<T> {
         Set { inner: SkipList::new() }
     }
 
-    pub fn insert(&self, elem: T) -> Option<T> {
+    pub fn insert(&self, elem: T) -> Option<(T, &T)> {
         self.inner.insert(elem)
     }
 
