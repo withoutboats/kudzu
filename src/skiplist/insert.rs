@@ -147,18 +147,18 @@ where T: AbstractOrd<T>
 
             new.store(succ, Release);
 
-            match succ == pred.compare_and_swap(succ, new_node_addr, AcqRel) {
+            match pred.compare_exchange(succ, new_node_addr, AcqRel, Acquire) {
                 // We successfully inserted the node into at least one lane,
                 // we note that for future iterations.
-                true                => inserted = true,
+                Result::Ok(_)       => inserted = true,
 
                 // Because the node has not been inserted yet, we need to retry
                 // the entire insertion on this failure.
-                false if !inserted  => continue 'retry,
+                Err(_) if !inserted => continue 'retry,
 
                 // Because the node has been inserted into at least one lane
                 // of the list, we just finish the insertion here.
-                false               => break 'insert,
+                Err(_)              => break 'insert,
             }
         }
 
