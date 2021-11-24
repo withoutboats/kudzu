@@ -1,4 +1,3 @@
-#![feature(manually_drop_take, atomic_min_max)]
 mod ord;
 mod skiplist;
 
